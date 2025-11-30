@@ -24,8 +24,8 @@ function parseConnections(): Connection[] {
         throw new Error('CONNECTIONS array cannot be empty');
       }
       for (const conn of connections) {
-        if (!conn.token || !conn.endpoint) {
-          throw new Error('Each connection must have "token" and "endpoint" properties');
+        if (!conn.token?.trim() || !conn.endpoint?.trim()) {
+          throw new Error('Each connection must have non-empty "token" and "endpoint" properties');
         }
       }
       return connections;
@@ -49,10 +49,19 @@ function parseConnections(): Connection[] {
     throw new Error('ENDPOINT or CONNECTIONS environment variable is required');
   }
   
+  const intentsEnv = process.env.INTENTS;
+  let intents: number | undefined;
+  if (intentsEnv) {
+    intents = parseInt(intentsEnv, 10);
+    if (isNaN(intents)) {
+      throw new Error('INTENTS environment variable must be a valid number');
+    }
+  }
+  
   return [{
     token,
     endpoint,
-    intents: process.env.INTENTS ? Number(process.env.INTENTS) : undefined,
+    intents,
   }];
 }
 
@@ -80,6 +89,9 @@ function createConnection(connection: Connection, index: number): WebSocketManag
     try {
       await fetch(endpoint, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(event),
         signal: controller.signal,
       });
