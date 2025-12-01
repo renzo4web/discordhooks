@@ -100,6 +100,15 @@ function createConnection(connection: Connection, index: number): WebSocketManag
     // compression: CompressionMethod.ZlibStream,
   });
 
+  // Handle errors gracefully - this is just a proxy, don't crash everything
+  manager.on(WebSocketShardEvents.Error, (error) => {
+    console.error(`${connectionLabel} WebSocket error (ignored):`, error.error?.message || error);
+  });
+
+  manager.on(WebSocketShardEvents.Closed, (event) => {
+    console.warn(`${connectionLabel} WebSocket closed:`, event);
+  });
+
   manager.on(WebSocketShardEvents.Dispatch, async (event) => {
     const t = event?.data?.t;
     const s = event?.data?.s;
