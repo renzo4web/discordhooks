@@ -18,37 +18,73 @@ function parseConnections(): Connection[] {
   const connectionsEnv = process.env.CONNECTIONS;
   
   if (!connectionsEnv) {
+    console.error('Error: CONNECTIONS environment variable is not set.');
+    console.error('');
+    console.error('CONNECTIONS must be a base64-encoded JSON array:');
+    console.error('  export CONNECTIONS=$(echo \'[{"token":"your-bot-token","endpoint":"https://your-webhook.com"}]\' | base64)');
     throw new Error('CONNECTIONS environment variable is required');
   }
   
+  // Decode base64 (remove whitespace that may be present from shell commands)
+  let jsonString: string;
   try {
-    const connections = JSON.parse(connectionsEnv) as Connection[];
-    if (!Array.isArray(connections)) {
-      throw new Error('CONNECTIONS must be a JSON array');
-    }
-    if (connections.length === 0) {
-      throw new Error('CONNECTIONS array cannot be empty');
-    }
-    for (const [idx, conn] of connections.entries()) {
-      if (
-        typeof conn.token !== 'string' ||
-        typeof conn.endpoint !== 'string' ||
-        !conn.token.trim() ||
-        !conn.endpoint.trim()
-      ) {
-        throw new Error(`Connection at index ${idx} must have non-empty string "token" and "endpoint" properties`);
-      }
-      if (conn.intents !== undefined && (!Number.isInteger(conn.intents) || conn.intents < 0)) {
-        throw new Error(`Connection at index ${idx} has invalid intents value (must be a non-negative integer)`);
-      }
-    }
-    return connections;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error('CONNECTIONS must be valid JSON');
-    }
-    throw error;
+    jsonString = atob(connectionsEnv.replace(/\s/g, ''));
+  } catch (decodeError) {
+    console.error('Error: CONNECTIONS is not valid base64.');
+    console.error(`Decode error: ${decodeError instanceof Error ? decodeError.message : String(decodeError)}`);
+    console.error('');
+    console.error('CONNECTIONS must be a base64-encoded JSON array:');
+    console.error('  export CONNECTIONS=$(echo \'[{"token":"your-bot-token","endpoint":"https://your-webhook.com"}]\' | base64)');
+    throw new Error('CONNECTIONS must be valid base64');
   }
+  
+  // Parse JSON
+  let connections: Connection[];
+  try {
+    connections = JSON.parse(jsonString) as Connection[];
+  } catch (parseError) {
+    console.error('Error: CONNECTIONS decoded but is not valid JSON.');
+    console.error(`Parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+    console.error('');
+    console.error('Expected JSON format: [{"token": "your-bot-token", "endpoint": "https://your-webhook.com"}]');
+    throw new Error('CONNECTIONS must decode to valid JSON');
+  }
+  
+  if (!Array.isArray(connections)) {
+    console.error('Error: CONNECTIONS must decode to a JSON array, got:', typeof connections);
+    throw new Error('CONNECTIONS must be a JSON array');
+  }
+  
+  if (connections.length === 0) {
+    console.error('Error: CONNECTIONS array is empty. At least one connection is required.');
+    throw new Error('CONNECTIONS array cannot be empty');
+  }
+  
+  for (const [idx, conn] of connections.entries()) {
+    const connLabel = `Connection at index ${idx}`;
+    
+    if (typeof conn !== 'object' || conn === null) {
+      console.error(`Error: ${connLabel} is not an object.`);
+      throw new Error(`${connLabel} must be an object with "token" and "endpoint" properties`);
+    }
+    
+    if (typeof conn.token !== 'string' || !conn.token.trim()) {
+      console.error(`Error: ${connLabel} must have a non-empty "token" string.`);
+      throw new Error(`${connLabel} must have a non-empty "token" property`);
+    }
+    
+    if (typeof conn.endpoint !== 'string' || !conn.endpoint.trim()) {
+      console.error(`Error: ${connLabel} must have a non-empty "endpoint" string.`);
+      throw new Error(`${connLabel} must have a non-empty "endpoint" property`);
+    }
+    
+    if (conn.intents !== undefined && (!Number.isInteger(conn.intents) || conn.intents < 0)) {
+      console.error(`Error: ${connLabel} has an invalid "intents" value (must be a non-negative integer).`);
+      throw new Error(`${connLabel} has invalid intents value`);
+    }
+  }
+  
+  return connections;
 }
 
 function createConnection(connection: Connection, index: number): WebSocketManager {
