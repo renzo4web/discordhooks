@@ -10,6 +10,10 @@ interface Connection {
   intents?: number;
 }
 
+function getConnectionLabel(index: number): string {
+  return `[Connection ${index + 1}]`;
+}
+
 function parseConnections(): Connection[] {
   const connectionsEnv = process.env.CONNECTIONS;
   
@@ -25,9 +29,17 @@ function parseConnections(): Connection[] {
     if (connections.length === 0) {
       throw new Error('CONNECTIONS array cannot be empty');
     }
-    for (const conn of connections) {
-      if (!conn.token?.trim() || !conn.endpoint?.trim()) {
-        throw new Error('Each connection must have non-empty "token" and "endpoint" properties');
+    for (const [idx, conn] of connections.entries()) {
+      if (
+        typeof conn.token !== 'string' ||
+        typeof conn.endpoint !== 'string' ||
+        !conn.token.trim() ||
+        !conn.endpoint.trim()
+      ) {
+        throw new Error(`Connection at index ${idx} must have non-empty string "token" and "endpoint" properties`);
+      }
+      if (conn.intents !== undefined && (!Number.isInteger(conn.intents) || conn.intents < 0)) {
+        throw new Error(`Connection at index ${idx} has invalid intents value (must be a non-negative integer)`);
       }
     }
     return connections;
@@ -41,7 +53,7 @@ function parseConnections(): Connection[] {
 
 function createConnection(connection: Connection, index: number): WebSocketManager {
   const { token, endpoint, intents } = connection;
-  const connectionLabel = `[Connection ${index + 1}]`;
+  const connectionLabel = getConnectionLabel(index);
   
   const rest = new REST().setToken(token);
   
@@ -93,13 +105,24 @@ function createConnection(connection: Connection, index: number): WebSocketManag
 const connections = parseConnections();
 console.info(`Starting ${connections.length} connection(s)...`);
 
+// Keep managers array for potential graceful shutdown handling
 const managers = connections.map((conn, index) => createConnection(conn, index));
 
-// Connect all managers
-await Promise.all(managers.map((manager, index) => {
-  console.info(`[Connection ${index + 1}] Connecting...`);
+// Connect all managers using allSettled for resilient connections
+const results = await Promise.allSettled(managers.map((manager, index) => {
+  console.info(`${getConnectionLabel(index)} Connecting...`);
   return manager.connect();
 }));
 
-console.info(`All ${connections.length} connection(s) established.`);
+const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+if (failures.length > 0) {
+  console.error(`${failures.length} connection(s) failed to establish:`);
+  failures.forEach((failure, idx) => {
+    const failedIndex = results.findIndex((r, i) => r === failure && i >= idx);
+    console.error(`  ${getConnectionLabel(failedIndex)}: ${failure.reason}`);
+  });
+}
+
+const successes = results.filter(r => r.status === 'fulfilled').length;
+console.info(`${successes}/${connections.length} connection(s) established.`);
 
