@@ -10,6 +10,19 @@ If you're thinking about creating a bot, chances are that you're trying to also 
 
 Since most of these events can be responded to using the REST API, not back through the same websocket connection, we can easily split these two things up and keep each super simple. That's what this service is for.
 
+# Configuration
+
+Use the `CONNECTIONS` environment variable with a JSON array to configure one or more Discord bot connections:
+
+```bash
+CONNECTIONS='[{"token":"bot_token_1","endpoint":"https://endpoint1.com/api"},{"token":"bot_token_2","endpoint":"https://endpoint2.com/api","intents":3276541}]'
+```
+
+Each connection object supports:
+- `token` (required): Discord bot token
+- `endpoint` (required): Webhook URL to receive events
+- `intents` (optional): Gateway intents (defaults to all intents)
+
 # Cloud version
 
 Right now, the cloud version of this service is designed specifically for Val Town. To make use of it, get in touch with @neverstew on the Val Town Discord.
