@@ -12,19 +12,7 @@ Since most of these events can be responded to using the REST API, not back thro
 
 # Configuration
 
-## Single Connection (Simple)
-
-For a single Discord bot, use these environment variables:
-
-```bash
-DISCORD_TOKEN=your_bot_token
-ENDPOINT=https://your-webhook-endpoint.com/api
-INTENTS=3276541  # Optional, defaults to all intents
-```
-
-## Multiple Connections
-
-To run multiple Discord bots, each sending events to their own endpoint, use the `CONNECTIONS` environment variable with a JSON array:
+Use the `CONNECTIONS` environment variable with a JSON array to configure one or more Discord bot connections:
 
 ```bash
 CONNECTIONS='[{"token":"bot_token_1","endpoint":"https://endpoint1.com/api"},{"token":"bot_token_2","endpoint":"https://endpoint2.com/api","intents":3276541}]'

@@ -13,56 +13,30 @@ interface Connection {
 function parseConnections(): Connection[] {
   const connectionsEnv = process.env.CONNECTIONS;
   
-  // If CONNECTIONS is provided, parse it as JSON array
-  if (connectionsEnv) {
-    try {
-      const connections = JSON.parse(connectionsEnv) as Connection[];
-      if (!Array.isArray(connections)) {
-        throw new Error('CONNECTIONS must be a JSON array');
-      }
-      if (connections.length === 0) {
-        throw new Error('CONNECTIONS array cannot be empty');
-      }
-      for (const conn of connections) {
-        if (!conn.token?.trim() || !conn.endpoint?.trim()) {
-          throw new Error('Each connection must have non-empty "token" and "endpoint" properties');
-        }
-      }
-      return connections;
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error('CONNECTIONS must be valid JSON');
-      }
-      throw error;
+  if (!connectionsEnv) {
+    throw new Error('CONNECTIONS environment variable is required');
+  }
+  
+  try {
+    const connections = JSON.parse(connectionsEnv) as Connection[];
+    if (!Array.isArray(connections)) {
+      throw new Error('CONNECTIONS must be a JSON array');
     }
-  }
-  
-  // Backward compatibility: use DISCORD_TOKEN and ENDPOINT
-  const token = process.env.DISCORD_TOKEN;
-  const endpoint = process.env.ENDPOINT;
-  
-  if (!token) {
-    throw new Error('DISCORD_TOKEN or CONNECTIONS environment variable is required');
-  }
-  
-  if (!endpoint) {
-    throw new Error('ENDPOINT or CONNECTIONS environment variable is required');
-  }
-  
-  const intentsEnv = process.env.INTENTS;
-  let intents: number | undefined;
-  if (intentsEnv) {
-    intents = parseInt(intentsEnv, 10);
-    if (isNaN(intents)) {
-      throw new Error('INTENTS environment variable must be a valid number');
+    if (connections.length === 0) {
+      throw new Error('CONNECTIONS array cannot be empty');
     }
+    for (const conn of connections) {
+      if (!conn.token?.trim() || !conn.endpoint?.trim()) {
+        throw new Error('Each connection must have non-empty "token" and "endpoint" properties');
+      }
+    }
+    return connections;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error('CONNECTIONS must be valid JSON');
+    }
+    throw error;
   }
-  
-  return [{
-    token,
-    endpoint,
-    intents,
-  }];
 }
 
 function createConnection(connection: Connection, index: number): WebSocketManager {
