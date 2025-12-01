@@ -14,41 +14,129 @@ function getConnectionLabel(index: number): string {
   return `[Connection ${index + 1}]`;
 }
 
+function isBase64(str: string): boolean {
+  // Remove whitespace (newlines, spaces) which may be present in base64 from shell commands
+  const cleaned = str.replace(/\s/g, '');
+  // Check if it looks like base64: alphanumeric + / + = padding
+  if (/^[A-Za-z0-9+/]+=*$/.test(cleaned) && cleaned.length >= 4) {
+    try {
+      const decoded = atob(cleaned);
+      // If decoding succeeds and result looks like JSON (starts with [ or {), it's likely base64
+      return decoded.trim().startsWith('[') || decoded.trim().startsWith('{');
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function decodeBase64(str: string): string {
+  // Remove whitespace (newlines, spaces) which may be present in base64 from shell commands
+  const cleaned = str.replace(/\s/g, '');
+  return atob(cleaned);
+}
+
 function parseConnections(): Connection[] {
   const connectionsEnv = process.env.CONNECTIONS;
   
   if (!connectionsEnv) {
+    console.error('Error: CONNECTIONS environment variable is not set.');
+    console.error('');
+    console.error('CONNECTIONS must be a JSON array with the following structure:');
+    console.error('[{"token": "your-bot-token", "endpoint": "https://your-webhook.com", "intents": 3276541}]');
+    console.error('');
+    console.error('You can also provide a base64-encoded JSON string:');
+    console.error('  export CONNECTIONS=$(echo \'[{"token":"...","endpoint":"..."}]\' | base64)');
     throw new Error('CONNECTIONS environment variable is required');
   }
   
-  try {
-    const connections = JSON.parse(connectionsEnv) as Connection[];
-    if (!Array.isArray(connections)) {
-      throw new Error('CONNECTIONS must be a JSON array');
+  let jsonString = connectionsEnv;
+  let wasBase64 = false;
+  
+  // Try to decode as base64 if it looks like base64
+  if (isBase64(connectionsEnv)) {
+    try {
+      jsonString = decodeBase64(connectionsEnv);
+      wasBase64 = true;
+      console.info('CONNECTIONS was provided as base64, decoded successfully.');
+    } catch (decodeError) {
+      console.error('Error: CONNECTIONS looks like base64 but failed to decode.');
+      console.error(`Decode error: ${decodeError instanceof Error ? decodeError.message : String(decodeError)}`);
+      throw new Error('CONNECTIONS base64 decoding failed');
     }
-    if (connections.length === 0) {
-      throw new Error('CONNECTIONS array cannot be empty');
-    }
-    for (const [idx, conn] of connections.entries()) {
-      if (
-        typeof conn.token !== 'string' ||
-        typeof conn.endpoint !== 'string' ||
-        !conn.token.trim() ||
-        !conn.endpoint.trim()
-      ) {
-        throw new Error(`Connection at index ${idx} must have non-empty string "token" and "endpoint" properties`);
-      }
-      if (conn.intents !== undefined && (!Number.isInteger(conn.intents) || conn.intents < 0)) {
-        throw new Error(`Connection at index ${idx} has invalid intents value (must be a non-negative integer)`);
-      }
-    }
-    return connections;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error('CONNECTIONS must be valid JSON');
-    }
-    throw error;
   }
+  
+  let connections: Connection[];
+  try {
+    connections = JSON.parse(jsonString) as Connection[];
+  } catch (parseError) {
+    console.error('Error: CONNECTIONS is not valid JSON.');
+    console.error(`Parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+    console.error('');
+    console.error('Received value (first 200 chars):');
+    console.error(`  ${jsonString.substring(0, 200)}${jsonString.length > 200 ? '...' : ''}`);
+    console.error('');
+    console.error('Expected format: [{"token": "your-bot-token", "endpoint": "https://your-webhook.com"}]');
+    if (!wasBase64) {
+      console.error('');
+      console.error('Tip: If your JSON has special characters, try base64 encoding:');
+      console.error('  export CONNECTIONS=$(echo \'[{"token":"...","endpoint":"..."}]\' | base64)');
+    }
+    throw new Error('CONNECTIONS must be valid JSON');
+  }
+  
+  if (!Array.isArray(connections)) {
+    console.error('Error: CONNECTIONS must be a JSON array, got:', typeof connections);
+    console.error('Expected format: [{"token": "your-bot-token", "endpoint": "https://your-webhook.com"}]');
+    throw new Error('CONNECTIONS must be a JSON array');
+  }
+  
+  if (connections.length === 0) {
+    console.error('Error: CONNECTIONS array is empty. At least one connection is required.');
+    throw new Error('CONNECTIONS array cannot be empty');
+  }
+  
+  for (const [idx, conn] of connections.entries()) {
+    const connLabel = `Connection at index ${idx}`;
+    
+    if (typeof conn !== 'object' || conn === null) {
+      console.error(`Error: ${connLabel} is not an object.`);
+      console.error(`  Received: ${JSON.stringify(conn)}`);
+      throw new Error(`${connLabel} must be an object with "token" and "endpoint" properties`);
+    }
+    
+    if (typeof conn.token !== 'string') {
+      console.error(`Error: ${connLabel} is missing the "token" property or it's not a string.`);
+      console.error(`  Received token type: ${typeof conn.token}`);
+      throw new Error(`${connLabel} must have a string "token" property`);
+    }
+    
+    if (!conn.token.trim()) {
+      console.error(`Error: ${connLabel} has an empty "token" value.`);
+      console.error('  The Discord bot token is required for authentication.');
+      throw new Error(`${connLabel} must have a non-empty "token" property`);
+    }
+    
+    if (typeof conn.endpoint !== 'string') {
+      console.error(`Error: ${connLabel} is missing the "endpoint" property or it's not a string.`);
+      console.error(`  Received endpoint type: ${typeof conn.endpoint}`);
+      throw new Error(`${connLabel} must have a string "endpoint" property`);
+    }
+    
+    if (!conn.endpoint.trim()) {
+      console.error(`Error: ${connLabel} has an empty "endpoint" value.`);
+      throw new Error(`${connLabel} must have a non-empty "endpoint" property`);
+    }
+    
+    if (conn.intents !== undefined && (!Number.isInteger(conn.intents) || conn.intents < 0)) {
+      console.error(`Error: ${connLabel} has an invalid "intents" value.`);
+      console.error(`  Received: ${conn.intents} (type: ${typeof conn.intents})`);
+      console.error('  Intents must be a non-negative integer (e.g., 3276541 for all intents).');
+      throw new Error(`${connLabel} has invalid intents value (must be a non-negative integer)`);
+    }
+  }
+  
+  return connections;
 }
 
 function createConnection(connection: Connection, index: number): WebSocketManager {
