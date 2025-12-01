@@ -17,12 +17,13 @@ function getConnectionLabel(index: number): string {
 function isBase64(str: string): boolean {
   // Remove whitespace (newlines, spaces) which may be present in base64 from shell commands
   const cleaned = str.replace(/\s/g, '');
-  // Check if it looks like base64: alphanumeric + / + = padding
-  if (/^[A-Za-z0-9+/]+=*$/.test(cleaned) && cleaned.length >= 4) {
+  // Check if it looks like valid base64: alphanumeric + / + = padding at end only, length multiple of 4
+  if (/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned) && cleaned.length >= 4 && cleaned.length % 4 === 0) {
     try {
       const decoded = atob(cleaned);
-      // If decoding succeeds and result looks like JSON (starts with [ or {), it's likely base64
-      return decoded.trim().startsWith('[') || decoded.trim().startsWith('{');
+      // Try to parse as JSON to verify it's valid JSON content
+      JSON.parse(decoded);
+      return true;
     } catch {
       return false;
     }
@@ -34,6 +35,11 @@ function decodeBase64(str: string): string {
   // Remove whitespace (newlines, spaces) which may be present in base64 from shell commands
   const cleaned = str.replace(/\s/g, '');
   return atob(cleaned);
+}
+
+function maskSensitiveData(str: string): string {
+  // Mask potential tokens (anything that looks like a Discord token after "token":)
+  return str.replace(/"token"\s*:\s*"[^"]+"/g, '"token": "[MASKED]"');
 }
 
 function parseConnections(): Connection[] {
@@ -73,8 +79,9 @@ function parseConnections(): Connection[] {
     console.error('Error: CONNECTIONS is not valid JSON.');
     console.error(`Parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     console.error('');
-    console.error('Received value (first 200 chars):');
-    console.error(`  ${jsonString.substring(0, 200)}${jsonString.length > 200 ? '...' : ''}`);
+    console.error('Received value (first 200 chars, tokens masked):');
+    const maskedValue = maskSensitiveData(jsonString.substring(0, 200));
+    console.error(`  ${maskedValue}${jsonString.length > 200 ? '...' : ''}`);
     console.error('');
     console.error('Expected format: [{"token": "your-bot-token", "endpoint": "https://your-webhook.com"}]');
     if (!wasBase64) {
