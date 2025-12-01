@@ -114,12 +114,17 @@ const results = await Promise.allSettled(managers.map((manager, index) => {
   return manager.connect();
 }));
 
-const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
-if (failures.length > 0) {
-  console.error(`${failures.length} connection(s) failed to establish:`);
-  failures.forEach((failure, idx) => {
-    const failedIndex = results.findIndex((r, i) => r === failure && i >= idx);
-    console.error(`  ${getConnectionLabel(failedIndex)}: ${failure.reason}`);
+const failedResults: Array<{index: number; reason: unknown}> = [];
+results.forEach((result, index) => {
+  if (result.status === 'rejected') {
+    failedResults.push({ index, reason: result.reason });
+  }
+});
+
+if (failedResults.length > 0) {
+  console.error(`${failedResults.length} connection(s) failed to establish:`);
+  failedResults.forEach(({ index, reason }) => {
+    console.error(`  ${getConnectionLabel(index)}: ${reason}`);
   });
 }
 
